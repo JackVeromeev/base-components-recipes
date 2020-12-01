@@ -15,11 +15,8 @@ export function numberFormat(options) {
     }
 
     return {
-        format: value => {
-            if (
-                value &&
-                exceedsSafeLength(value, normalizedOpts.maximumFractionDigits)
-            ) {
+        format: (value) => {
+            if (value && exceedsSafeLength(value)) {
                 return numberFormatFallback(normalizedOpts).format(value);
             }
             const numberFormatInstance = getFromCache(normalizedOpts);

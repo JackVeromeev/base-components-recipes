@@ -17,20 +17,25 @@ import {
     createErrorEvent,
     filterByPicklistsInForm,
     formHasPicklists,
+    getRecordTypeId,
     validateForm
 } from 'c/recordEditUtils';
-import { densityValues, labelAlignValues } from 'c/fieldUtils';
+import {
+    densityValues,
+    labelAlignValues,
+    getFieldsForLayout
+} from 'c/fieldUtils';
 import {
     doNormalization,
     resetResizeObserver,
-    setLabelAlignment
+    setLabelAlignment,
+    disconnectResizeObserver
 } from 'c/formDensityUtilsPrivate';
-import { deepCopy } from 'c/utilsPrivate';
+import { debounce } from 'c/inputUtils';
+import { deepCopy, arraysEqual } from 'c/utilsPrivate';
 
 import { normalizeRecordId } from 'c/recordUtils';
 import { DependencyManager } from 'c/fieldDependencyManager';
-
-const MASTER_RECORD_TYPE_ID = '012000000000000AAA';
 
 export default class cRecordEditForm extends LightningElement {
     @api fieldNames;
@@ -109,6 +114,11 @@ export default class cRecordEditForm extends LightningElement {
         this.checkMode();
 
         this._connected = true;
+    }
+
+    disconnectedCallback() {
+        this._connected = false;
+        disconnectResizeObserver(this);
     }
 
     renderedCallback() {
@@ -230,7 +240,7 @@ export default class cRecordEditForm extends LightningElement {
         this.inServerErrorState = false;
         const inputComponents = this.getInputFieldComponents();
 
-        inputComponents.forEach(field => {
+        inputComponents.forEach((field) => {
             field.setErrors({});
         });
     }
@@ -255,16 +265,24 @@ export default class cRecordEditForm extends LightningElement {
             this.handleErrors({ message });
             return;
         }
+
+        const layoutFieldData = getFieldsForLayout(
+            data,
+            this.objectApiName,
+            this._layout
+        );
+
         const viewData = {
             record,
             objectInfo: data.objectInfos[this.objectApiName],
             objectInfos: data.objectInfos,
             createMode: !this._recordId,
-            labelAlignment: this._fieldLabelAlignment
+            labelAlignment: this._fieldLabelAlignment,
+            layoutFieldData
         };
 
         this.recordUi = viewData;
-        this.getInputAndOutputComponents().forEach(field => {
+        this.getInputAndOutputComponents().forEach((field) => {
             field.wireRecordUi(viewData);
         });
 
@@ -280,7 +298,9 @@ export default class cRecordEditForm extends LightningElement {
         const oldObjectApiName = this._wiredPicklistApiName;
 
         this._wiredPicklistApiName = this.objectApiName;
-        this._wiredRecordTypeId = this.recordTypeId || MASTER_RECORD_TYPE_ID;
+
+        this._wiredRecordTypeId =
+            this.recordTypeId || getRecordTypeId(this.recordUi);
 
         if (
             oldObjectApiName === this._wiredPicklistApiName &&
@@ -315,7 +335,7 @@ export default class cRecordEditForm extends LightningElement {
             picklistValues: filteredPicklistValues
         });
 
-        this.getInputFieldComponents().forEach(field => {
+        this.getInputFieldComponents().forEach((field) => {
             field.wirePicklistValues(filteredPicklistValues);
         });
 
@@ -329,7 +349,7 @@ export default class cRecordEditForm extends LightningElement {
 
     @api
     submit(fields) {
-        this.doSubmit(fields).catch(err => {
+        this.doSubmit(fields).catch((err) => {
             this.handleErrors(err);
         });
     }
@@ -355,15 +375,15 @@ export default class cRecordEditForm extends LightningElement {
                 originalRecord,
                 this.recordUi.objectInfo
             ).then(
-                savedRecord => {
+                (savedRecord) => {
                     this._pendingAction = false;
-                    const lightningMessages = this.querySelector(
-                        'lightning-messages'
-                    );
+                    const lightningMessages = this.querySelector('c-messages');
 
                     if (lightningMessages) {
                         lightningMessages.setError(null);
                     }
+
+                    this.cleanFields();
 
                     this.dispatchEvent(
                         // eslint-disable-next-line lightning-global/no-custom-event-bubbling
@@ -376,7 +396,7 @@ export default class cRecordEditForm extends LightningElement {
 
                     resolve();
                 },
-                err => {
+                (err) => {
                     this._pendingAction = false;
                     reject(err);
                 }
@@ -394,7 +414,7 @@ export default class cRecordEditForm extends LightningElement {
     }
 
     handleErrors(error) {
-        const messages = this.querySelector('lightning-messages');
+        const messages = this.querySelector('c-messages');
         const err = deepCopy(error);
 
         if (!this._rendered) {
@@ -405,10 +425,10 @@ export default class cRecordEditForm extends LightningElement {
         const inputComponents = this.getInputFieldComponents();
         if (err.body && err.body.output && err.body.output.fieldErrors) {
             this._inServerErrorState = true;
-            const fieldNames = inputComponents.map(field => {
+            const fieldNames = inputComponents.map((field) => {
                 return field.fieldName;
             });
-            Object.keys(err.body.output.fieldErrors).forEach(field => {
+            Object.keys(err.body.output.fieldErrors).forEach((field) => {
                 if (fieldNames.indexOf(field) === -1) {
                     err.body.detail =
                         err.body.output.fieldErrors[field][0].message;
@@ -419,7 +439,7 @@ export default class cRecordEditForm extends LightningElement {
             messages.setError(err);
         }
 
-        inputComponents.forEach(field => {
+        inputComponents.forEach((field) => {
             field.setErrors(err);
         });
 
@@ -437,10 +457,23 @@ export default class cRecordEditForm extends LightningElement {
         );
     }
 
+    rewireData = debounce(() => {
+        this.handleData({ data: this.wiredRecord });
+    }, 0);
+
+    registerOptionalFields = debounce((fields) => {
+        this.optionalFields = fields;
+    }, 0);
+
     handleRegister() {
         if (this.fieldSet) {
             this.fieldSet.concat(this.getFields());
-            this.optionalFields = this.fieldSet.getList();
+            const newList = this.fieldSet.getList().sort();
+            if (!arraysEqual(newList, this.optionalFields)) {
+                this.registerOptionalFields(newList);
+            } else {
+                this.rewireData();
+            }
         }
     }
 
@@ -463,11 +496,19 @@ export default class cRecordEditForm extends LightningElement {
     }
 
     handleSubmit(e) {
-        if (e.target.type !== 'submit') {
-            return;
-        }
         e.preventDefault();
         e.stopPropagation();
+
+        if (!this.recordUi) {
+            return;
+        }
+
+        const eventHasNoTarget = e.target === undefined || e.target === null;
+
+        if (eventHasNoTarget || e.target.type !== 'submit') {
+            return;
+        }
+
         if (!this.validateForm()) {
             const form = this.template.querySelector('form');
 
@@ -500,7 +541,7 @@ export default class cRecordEditForm extends LightningElement {
             }
 
             this._pendingAction = true;
-            this.doSubmit().catch(err => {
+            this.doSubmit().catch((err) => {
                 this.handleErrors(err);
             });
         }, 0);
@@ -517,7 +558,7 @@ export default class cRecordEditForm extends LightningElement {
     }
 
     getFields() {
-        return this.getInputAndOutputComponents().map(field => {
+        return this.getInputAndOutputComponents().map((field) => {
             return field.fieldName;
         });
     }
@@ -563,5 +604,11 @@ export default class cRecordEditForm extends LightningElement {
                 };
             }
         };
+    }
+
+    cleanFields() {
+        this.getInputFieldComponents().forEach((inputField) => {
+            inputField.clean();
+        });
     }
 }

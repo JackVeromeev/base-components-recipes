@@ -11,6 +11,7 @@ import {
     densityValues,
     getCompoundFields,
     compoundFieldIsUpdateable,
+    compoundFieldIsCreateable,
     isCompoundField,
     isPersonAccount,
     UNSUPPORTED_REFERENCE_FIELDS
@@ -20,6 +21,7 @@ import { classSet } from 'c/utils';
 import labelSave from '@salesforce/label/c.lightning_LightningRecordForm_save';
 import labelCancel from '@salesforce/label/c.lightning_LightningRecordForm_cancel';
 import labelLoading from '@salesforce/label/c.lightning_LightningRecordForm_loading';
+import { normalizeRecordId } from 'c/recordUtils';
 
 const EDIT_MODE = 'edit';
 const VIEW_MODE = 'view';
@@ -27,20 +29,6 @@ const READ_ONLY_MODE = 'readonly';
 
 function isUnsupportedReferenceField(name) {
     return UNSUPPORTED_REFERENCE_FIELDS.indexOf(name) !== -1;
-}
-
-function extractLayoutFromLayouts(layouts, apiName, layout) {
-    const layoutId = Object.keys(layouts[apiName])[0];
-    if (
-        layoutId &&
-        layouts[apiName] &&
-        layouts[apiName][layoutId] &&
-        layouts[apiName][layoutId][layout] &&
-        layouts[apiName][layoutId][layout].View
-    ) {
-        return layouts[apiName][layoutId][layout].View;
-    }
-    return null;
 }
 
 export default class cRecordForm extends LightningElement {
@@ -52,8 +40,8 @@ export default class cRecordForm extends LightningElement {
     @track cols = 1;
     @track _loading = true;
     @track fieldsReady = false;
+    @track _recordTypeId;
 
-    @api recordTypeId;
     _record;
     _firstLoad = true;
     _loadError = false;
@@ -128,12 +116,24 @@ export default class cRecordForm extends LightningElement {
         });
     }
 
+    set recordTypeId(val) {
+        this._recordTypeId = val;
+
+        this._fieldsHandled = false;
+    }
+
+    @api get recordTypeId() {
+        return this._recordTypeId;
+    }
+
     set recordId(val) {
         if (!val && !this._mode) {
             this._editMode = true;
         }
 
-        this._recordId = val;
+        this._recordId = normalizeRecordId(val);
+
+        this._fieldsHandled = false;
     }
 
     @api get recordId() {
@@ -236,25 +236,35 @@ export default class cRecordForm extends LightningElement {
                         );
                     }
 
+                    const hasFields =
+                        this._objectInfo && this._objectInfo.fields;
+
                     const fieldUpdateable = compound
                         ? compoundFieldIsUpdateable(
                               compoundFields, // eslint-disable-line indent
                               this._record, // eslint-disable-line indent
                               this._objectInfo // eslint-disable-line indent
                           ) // eslint-disable-line indent
-                        : this._objectInfo &&
-                          this._objectInfo.fields &&
+                        : hasFields &&
                           this._objectInfo.fields[field].updateable;
+                    const fieldCreateable = compound
+                        ? compoundFieldIsCreateable(
+                              compoundFields, // eslint-disable-line indent
+                              this._record, // eslint-disable-line indent
+                              this._objectInfo // eslint-disable-line indent
+                          ) // eslint-disable-line indent
+                        : hasFields &&
+                          this._objectInfo.fields[field].createable;
+                    const shouldShowAsInputInEditMode =
+                        fieldUpdateable || (!this._recordId && fieldCreateable);
                     const updateable =
                         !isUnsupportedReferenceField(field) && this._objectInfo
-                            ? fieldUpdateable
+                            ? shouldShowAsInputInEditMode
                             : false;
                     const editable =
                         !isUnsupportedReferenceField(field) &&
                         this._editable &&
-                        (this._objectInfo &&
-                        this._objectInfo.fields &&
-                        this._objectInfo.fields[field]
+                        (hasFields && this._objectInfo.fields[field]
                             ? fieldUpdateable
                             : false);
                     thisRow.fields.push({
@@ -302,31 +312,18 @@ export default class cRecordForm extends LightningElement {
 
     handleLoad(e) {
         e.stopPropagation();
-        let fields;
         const apiName = this._objectApiName.objectApiName
             ? this._objectApiName.objectApiName
             : this._objectApiName;
 
         if (!this._fieldsHandled && this._layout && e.detail.objectInfos) {
-            if (e.detail.layout) {
-                fields = getFieldsForLayout(
-                    e.detail.layout,
-                    e.detail.objectInfos[apiName]
-                );
-            } else if (e.detail.layouts) {
-                const layout = extractLayoutFromLayouts(
-                    e.detail.layouts,
-                    apiName,
-                    this._layout
-                );
+            const layoutFields = getFieldsForLayout(
+                e.detail,
+                apiName,
+                this._layout
+            );
 
-                if (layout) {
-                    fields = getFieldsForLayout(
-                        layout,
-                        e.detail.objectInfos[apiName]
-                    );
-                }
-            }
+            this.fields = Object.keys(layoutFields);
             this._fieldsHandled = true;
         }
 
@@ -336,10 +333,6 @@ export default class cRecordForm extends LightningElement {
         this._record = record;
 
         this._isPersonAccount = record ? isPersonAccount(record) : false;
-
-        if (fields) {
-            this.fields = deepCopy(fields);
-        }
 
         if (this._firstLoad) {
             this._loading = false;
@@ -387,7 +380,7 @@ export default class cRecordForm extends LightningElement {
         );
 
         if (inputFields) {
-            inputFields.forEach(field => {
+            inputFields.forEach((field) => {
                 field.reset();
             });
         }
@@ -400,7 +393,7 @@ export default class cRecordForm extends LightningElement {
             this.clearForm();
         }
 
-        this.template.querySelector('lightning-messages').setError(null);
+        this.template.querySelector('c-messages').setError(null);
 
         this.dispatchEvent(new CustomEvent('cancel'));
     }

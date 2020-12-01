@@ -23,13 +23,12 @@ import labelMoveSelectionToAssistiveText from '@salesforce/label/c.lightning_Lig
 import labelLoadingText from '@salesforce/label/c.lightning_LightningCombobox_loadingText';
 import { LightningElement, api, track } from 'lwc';
 import { handleKeyDownOnOption } from './keyboard';
-import { classSet } from 'c/utils';
+import { classSet, formatLabel } from 'c/utils';
 import {
     assert,
     normalizeBoolean,
     getRealDOMId,
-    classListMutation,
-    ArraySlice
+    classListMutation
 } from 'c/utilsPrivate';
 import {
     InteractingState,
@@ -202,7 +201,7 @@ export default class cDualListbox extends LightningElement {
 
     @api
     reportValidity() {
-        return this._constraint.reportValidity(message => {
+        return this._constraint.reportValidity((message) => {
             this.errorMessage = message;
         });
     }
@@ -290,7 +289,7 @@ export default class cDualListbox extends LightningElement {
             const required = this.requiredOptions;
             const values = this.value;
             sourceListOptions = this.options.filter(
-                option =>
+                (option) =>
                     values.indexOf(option.value) === -1 &&
                     required.indexOf(option.value) === -1
             );
@@ -306,23 +305,23 @@ export default class cDualListbox extends LightningElement {
         const selectedListOptions = [];
         if (this.options) {
             const optionsMap = {};
-            this.options.forEach(option => {
+            this.options.forEach((option) => {
                 optionsMap[option.value] = { ...option };
             });
-            this.value.forEach(optionValue => {
+            this.value.forEach((optionValue) => {
                 const option = optionsMap[optionValue];
                 if (option) {
                     option.isSelected = true;
                 }
             });
-            this.requiredOptions.forEach(optionValue => {
+            this.requiredOptions.forEach((optionValue) => {
                 const option = optionsMap[optionValue];
                 if (option) {
                     option.isLocked = true;
                 }
             });
 
-            this.value.forEach(optionValue => {
+            this.value.forEach((optionValue) => {
                 const option = optionsMap[optionValue];
                 if (option) {
                     selectedListOptions.push(option);
@@ -338,14 +337,14 @@ export default class cDualListbox extends LightningElement {
 
     computeListOptions(options, focusableOptionValue) {
         if (options.length > 0) {
-            const focusableOption = options.find(option => {
+            const focusableOption = options.find((option) => {
                 return option.value === focusableOptionValue;
             });
 
             const focusableValue = focusableOption
                 ? focusableOption.value
                 : options[0].value;
-            return options.map(option => {
+            return options.map((option) => {
                 return this.computeOptionProperties(option, focusableValue);
             });
         }
@@ -402,7 +401,7 @@ export default class cDualListbox extends LightningElement {
     }
 
     get computedLockAssistiveText() {
-        return this.formatString(
+        return formatLabel(
             this.i18n.optionLockAssistiveText,
             this.selectedLabel
         );
@@ -413,7 +412,7 @@ export default class cDualListbox extends LightningElement {
     }
 
     getRightButtonAssistiveText() {
-        return this.formatString(
+        return formatLabel(
             i18n.moveSelectionToAssistiveText,
             this.selectedLabel
         );
@@ -431,10 +430,7 @@ export default class cDualListbox extends LightningElement {
     }
 
     getLeftButtonAssistiveText() {
-        return this.formatString(
-            i18n.moveSelectionToAssistiveText,
-            this.sourceLabel
-        );
+        return formatLabel(i18n.moveSelectionToAssistiveText, this.sourceLabel);
     }
 
     @api get removeButtonLabel() {
@@ -542,14 +538,14 @@ export default class cDualListbox extends LightningElement {
             return;
         }
         const toMove = this.highlightedOptions;
-        const values = this.computedSelectedList.map(option => option.value);
+        const values = this.computedSelectedList.map((option) => option.value);
         const required = this.requiredOptions;
         let newValues = [];
         if (addToSelect) {
             newValues = values.concat(toMove);
         } else {
             newValues = values.filter(
-                value =>
+                (value) =>
                     toMove.indexOf(value) === -1 || required.indexOf(value) > -1
             );
         }
@@ -587,9 +583,9 @@ export default class cDualListbox extends LightningElement {
 
     changeOrderOfOptionsInList(moveUp) {
         const elementList = this.getElementsOfList(this.selectedList);
-        const values = this.computedSelectedList.map(option => option.value);
+        const values = this.computedSelectedList.map((option) => option.value);
         const toMove = values.filter(
-            option => this.highlightedOptions.indexOf(option) > -1
+            (option) => this.highlightedOptions.indexOf(option) > -1
         );
 
         const validSelection =
@@ -676,9 +672,9 @@ export default class cDualListbox extends LightningElement {
         }
 
         const numOfSelectedValues = this._selectedValues.length;
-        const allValues = this.options.map(option => option.value);
+        const allValues = this.options.map((option) => option.value);
 
-        const requiredValues = this._requiredOptions.filter(option =>
+        const requiredValues = this._requiredOptions.filter((option) =>
             allValues.includes(option)
         );
 
@@ -708,22 +704,22 @@ export default class cDualListbox extends LightningElement {
 
     get _overflowMessage() {
         const minHelpMsg =
-            this.min > 0 ? this.formatString(this.i18n.minHelp, this.min) : '';
+            this.min > 0 ? formatLabel(this.i18n.minHelp, this.min) : '';
 
-        return this.formatString(this.i18n.maxError, this.max) + minHelpMsg;
+        return formatLabel(this.i18n.maxError, this.max) + minHelpMsg;
     }
 
     get _underflowMessage() {
         const maxHelpMsg = this.max
-            ? this.formatString(this.i18n.maxHelp, this.max)
+            ? formatLabel(this.i18n.maxHelp, this.max)
             : '';
         const minRequiredError =
             this.min > 1
-                ? this.formatString(this.i18n.minRequiredErrorPlural, this.min)
+                ? formatLabel(this.i18n.minRequiredErrorPlural, this.min)
                 : this.i18n.minRequiredErrorSingular;
         const minError =
             this.min > 1
-                ? this.formatString(this.i18n.minErrorPlural, this.min)
+                ? formatLabel(this.i18n.minErrorPlural, this.min)
                 : this.i18n.minErrorSingular;
 
         return this.required
@@ -777,17 +773,6 @@ export default class cDualListbox extends LightningElement {
         const temp = array[i];
         array[i] = array[j];
         array[j] = temp;
-    }
-
-    formatString(str) {
-        const args = ArraySlice.call(arguments, 1);
-
-        if (str) {
-            return str.replace(/{(\d+)}/g, (match, i) => {
-                return typeof args[i] !== 'undefined' ? args[i] : match;
-            });
-        }
-        return '';
     }
 
     getElementsOfList(listId) {

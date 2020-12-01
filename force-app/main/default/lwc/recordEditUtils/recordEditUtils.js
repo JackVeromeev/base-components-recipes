@@ -12,15 +12,17 @@ import {
     generateRecordInputForUpdate,
     createRecordInputFilteredByEditedFields
 } from 'lightning/uiRecordApi';
-
+export { deepCopy } from 'c/utilsPrivate';
 export { filterByPicklistsInForm, formHasPicklists } from './picklists';
 
 const OUTPUT_FIELD_TAGNAME = 'C-OUTPUT-FIELD';
 
+const MASTER_RECORD_TYPE_ID = '012000000000000AAA';
+
 function normalizeRecord(newRecord) {
     const normalizedRecord = Object.assign({}, newRecord);
     normalizedRecord.fields = {};
-    Object.keys(newRecord.fields).forEach(field => {
+    Object.keys(newRecord.fields).forEach((field) => {
         if (
             newRecord.fields[field] &&
             typeof newRecord.fields[field] === 'object'
@@ -77,8 +79,8 @@ export async function createOrSaveRecord(
 
 export function getFormValues(inputFields) {
     const values = {};
-    inputFields.forEach(field => {
-        if (field.readonly) {
+    inputFields.forEach((field) => {
+        if (field.readOnly) {
             return;
         }
 
@@ -160,14 +162,14 @@ class FieldSet {
     }
 
     concat(arr) {
-        arr.forEach(item => {
+        arr.forEach((item) => {
             this.add(item);
         });
     }
 
     getList() {
         const apiName = this._apiName;
-        return [...this._set].map(field => {
+        return [...this._set].map((field) => {
             return `${apiName}.${field}`;
         });
     }
@@ -179,7 +181,7 @@ class FieldSet {
 
 export function validateForm(inputFields) {
     let isValid = true;
-    inputFields.forEach(cmp => {
+    inputFields.forEach((cmp) => {
         if (cmp.tagName === OUTPUT_FIELD_TAGNAME || !cmp.reportValidity) {
             return;
         }
@@ -192,4 +194,18 @@ export function validateForm(inputFields) {
 
 export function getFieldSet(objectApiName) {
     return new FieldSet(objectApiName);
+}
+
+export function getRecordTypeId(recordUi) {
+    const record = recordUi.record;
+    const objectInfo = recordUi.objectInfo;
+
+    const defaultRecordTypeId =
+        objectInfo.defaultRecordTypeId || MASTER_RECORD_TYPE_ID;
+
+    if (!record.id) {
+        return defaultRecordTypeId;
+    }
+
+    return record.recordTypeId || defaultRecordTypeId;
 }

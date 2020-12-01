@@ -5,8 +5,6 @@
  * For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/MIT
  */
 
-import { ArraySlice } from './utility';
-
 export class EventEmitter {
     constructor() {
         this.registry = {};
@@ -19,7 +17,7 @@ export class EventEmitter {
     }
 
     once(name, listener) {
-        const doOnce = function() {
+        const doOnce = function () {
             listener.apply(null, arguments);
             this.removeListener(name, doOnce);
         }.bind(this);
@@ -28,12 +26,12 @@ export class EventEmitter {
     }
 
     emit(name) {
-        const args = ArraySlice.call(arguments, 1);
+        const args = Array.prototype.slice.call(arguments, 1);
         const listeners = this.registry[name];
         let count = 0;
 
         if (listeners) {
-            listeners.forEach(listener => {
+            listeners.forEach((listener) => {
                 count += 1;
                 listener.apply(null, args);
             });

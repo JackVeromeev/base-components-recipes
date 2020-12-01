@@ -29,6 +29,10 @@ export { isChrome, isIE11, isSafari } from './browser';
 export { ContentMutation } from './contentMutation';
 export { observePosition } from './observers';
 export { hasOnlyAllowedVideoIframes } from './videoUtils';
+export {
+    parseToFormattedLinkifiedParts,
+    parseToFormattedParts
+} from './linkify';
 import { smartSetAttribute } from './smartSetAttribute';
 
 export function synchronizeAttrs(element, values) {
@@ -36,7 +40,7 @@ export function synchronizeAttrs(element, values) {
         return;
     }
     const attributes = Object.keys(values);
-    attributes.forEach(attribute => {
+    attributes.forEach((attribute) => {
         smartSetAttribute(element, attribute, values[attribute]);
     });
 }
@@ -107,15 +111,38 @@ export function getZIndexBaseline() {
 }
 
 export function timeout(interval) {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
         // eslint-disable-next-line @lwc/lwc/no-async-operation
         setTimeout(resolve, interval);
     });
 }
 
 export function animationFrame() {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
         // eslint-disable-next-line @lwc/lwc/no-async-operation
         window.requestAnimationFrame(resolve);
     });
+}
+
+export function decorateInputForDragon(element) {}
+
+function getInputValuePropertyDescriptor(element) {
+    return Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(element),
+        'value'
+    );
+}
+
+export function setDecoratedDragonInputValueWithoutEvent(element, value) {
+    element.value = value;
+    return value;
+}
+
+export function escapeHTML(html) {
+    return html
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }

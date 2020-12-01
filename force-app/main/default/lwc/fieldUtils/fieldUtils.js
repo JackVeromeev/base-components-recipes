@@ -27,22 +27,32 @@ export const densityValues = DensityValues;
 
 export const densityLabelAlignMapping = DensityLabelAlignMapping;
 
-const getCompoundValue = (field, record, fieldInfo, objectInfo) => {
+function isLocalizedFieldType(type) {
+    return LocalizedFieldTypes.includes(type);
+}
+
+const getCompoundFieldData = (field, record, fieldInfo, objectInfo) => {
     if (FieldTypes.LOCATION === fieldInfo.dataType) {
         const prefix = field.slice(0, field.indexOf('__c'));
         const longitude = record.fields[prefix + '__Longitude__s'].value;
         const latitude = record.fields[prefix + '__Latitude__s'].value;
 
-        return { longitude, latitude };
+        return { value: { longitude, latitude } };
     }
 
     const compoundFields = getCompoundFields(field, record, objectInfo);
-    const ret = {};
-    compoundFields.forEach(childField => {
+    const ret = { value: {}, displayValue: {} };
+    compoundFields.forEach((childField) => {
         if (record.fields[childField]) {
-            ret[childField] = record.fields[childField].value;
+            if (isLocalizedFieldType(objectInfo.fields[childField].dataType)) {
+                ret.displayValue[childField] =
+                    record.fields[childField].displayValue;
+            }
+
+            ret.value[childField] = record.fields[childField].value;
         }
     });
+
     return ret;
 };
 
@@ -58,14 +68,14 @@ export function isPersonAccount(record) {
 
 export function getMissingRelationshipFields(record, relationships) {
     const incompleteFields = Object.keys(relationships).filter(
-        key => !record.fields[relationships[key].name]
+        (key) => !record.fields[relationships[key].name]
     );
 
     return Array.prototype.concat.apply(
         [],
-        incompleteFields.map(key =>
+        incompleteFields.map((key) =>
             relationships[key].nameFields.map(
-                nameField => relationships[key].name + '.' + nameField
+                (nameField) => relationships[key].name + '.' + nameField
             )
         )
     );
@@ -74,7 +84,7 @@ export function getMissingRelationshipFields(record, relationships) {
 export function getReferenceRelationships(fields, objectInfo) {
     return fields
         .filter(
-            field =>
+            (field) =>
                 objectInfo.fields[field] && objectInfo.fields[field].reference
         )
         .reduce((relationships, field) => {
@@ -91,7 +101,7 @@ export function getReferenceRelationships(fields, objectInfo) {
 }
 
 export function getCompoundFields(field, record, objectInfo) {
-    return Object.keys(objectInfo.fields).filter(key => {
+    return Object.keys(objectInfo.fields).filter((key) => {
         return (
             key !== field &&
             record.fields[key] &&
@@ -100,14 +110,17 @@ export function getCompoundFields(field, record, objectInfo) {
     });
 }
 
-const getReferenceInfo = (record, fieldInfo) => {
+function getReferenceInfo(record, fieldInfo) {
     const relationshipName = fieldInfo.relationshipName;
 
     const relationshipNameFields = fieldInfo.referenceToInfos[0].nameFields;
     const relationship = record.fields[relationshipName];
 
     if (!relationship || !relationship.value) {
-        return { referenceId: null, displayValue: null };
+        return {
+            referenceId: record.fields[fieldInfo.apiName].value,
+            displayValue: record.fields[fieldInfo.apiName].displayValue
+        };
     }
 
     const referenceField = relationship.value.fields;
@@ -126,7 +139,7 @@ const getReferenceInfo = (record, fieldInfo) => {
         referenceId: referenceField.Id.value,
         displayValue
     };
-};
+}
 
 export const getUiField = (field, record, objectInfo) => {
     const fieldInfo = objectInfo.fields[field];
@@ -134,41 +147,39 @@ export const getUiField = (field, record, objectInfo) => {
         throw new Error(`Field [${field}] was not found`);
     }
 
+    let result = { type: fieldInfo.dataType };
+
+    Object.assign(result, fieldInfo);
+
     const personAccount = isPersonAccount(record);
-
-    const value = isCompoundField(field, objectInfo, personAccount)
-        ? getCompoundValue(field, record, fieldInfo, objectInfo)
-        : record.fields[field] && record.fields[field].value;
-
-    let result = {
-        type: fieldInfo.dataType,
-        extraTypeInfo: fieldInfo.extraTypeInfo,
-        label: fieldInfo.label,
-        inlineHelpText: fieldInfo.inlineHelpText,
-        value
-    };
-
-    result = Object.assign(result, fieldInfo);
 
     if (fieldInfo.reference) {
         const referenceInfo = getReferenceInfo(record, fieldInfo);
 
         result.value = referenceInfo.referenceId;
         result.displayValue = referenceInfo.displayValue;
-    } else {
-        const includeDisplayValue = LocalizedFieldTypes.includes(
-            fieldInfo.dataType
+    } else if (isCompoundField(field, objectInfo, personAccount)) {
+        const fieldData = getCompoundFieldData(
+            field,
+            record,
+            fieldInfo,
+            objectInfo
         );
 
-        if (includeDisplayValue) {
+        Object.assign(result, fieldData);
+    } else {
+        result.value = record.fields[field] && record.fields[field].value;
+
+        if (isLocalizedFieldType(fieldInfo.dataType)) {
             result.displayValue = record.fields[field].displayValue;
         }
     }
+
     return result;
 };
 
 export const getUiFields = (fields, record, objectInfos) => {
-    const fieldValues = fields.map(field =>
+    const fieldValues = fields.map((field) =>
         getUiField(field, record, objectInfos)
     );
 
@@ -245,6 +256,8 @@ export function parseError(err) {
             detail = err.body[0].errorCode;
         } else if (err.body && err.body.message) {
             message = err.body.message;
+        } else if (err.body && err.body.error) {
+            message = err.body.error;
         } else if (err.body) {
             message = err.body;
         } else if (err.statusText) {
@@ -260,12 +273,9 @@ export function parseError(err) {
 }
 
 export function createErrorEvent(err) {
-    const { message, detail } = parseError(err);
-    const error = new Error(message);
-    return new ErrorEvent('error', {
-        error,
-        message,
-        detail
+    const parsed = parseError(err);
+    return new CustomEvent('error', {
+        detail: parsed
     });
 }
 
@@ -290,14 +300,14 @@ class FieldSet {
     }
 
     concat(arr) {
-        arr.forEach(item => {
+        arr.forEach((item) => {
             this.add(item);
         });
     }
 
     getList() {
         const apiName = this._apiName;
-        return [...this._set].map(field => {
+        return [...this._set].map((field) => {
             return `${apiName}.${field}`;
         });
     }
@@ -311,16 +321,66 @@ export function getFieldSet(objectApiName) {
     return new FieldSet(objectApiName);
 }
 
-export function getFieldsForLayout(layout, objectInfo) {
+export function getFieldsForLayout(record, apiName, layoutType) {
+    let layoutData = record.layout;
+    if (record.layouts) {
+        layoutData = extractLayoutFromLayouts(
+            record.layouts,
+            apiName,
+            layoutType || 'Full'
+        );
+    }
+    if (layoutData) {
+        const fieldsFromLayout = getFieldsFromLayoutResponse(
+            layoutData,
+            record.objectInfos[apiName]
+        );
+
+        if (Array.isArray(fieldsFromLayout)) {
+            return fieldsFromLayout.reduce((seed, field) => {
+                seed[field.fieldName] = {
+                    label: field.fieldLabel
+                };
+
+                return seed;
+            }, {});
+        }
+    }
+    return {};
+}
+
+function extractLayoutFromLayouts(layouts, apiName, layout) {
+    const entityLayout = layouts && layouts[apiName];
+    if (!entityLayout) {
+        return null;
+    }
+
+    const layoutId = Object.keys(entityLayout)[0];
+    if (
+        layoutId &&
+        entityLayout[layoutId] &&
+        entityLayout[layoutId][layout] &&
+        entityLayout[layoutId][layout].View
+    ) {
+        return entityLayout[layoutId][layout].View;
+    }
+    return null;
+}
+
+function getFieldsFromLayoutResponse(layout, objectInfo) {
     const processedFieldNames = {};
 
-    const fieldsAccumulator = (listToReduce, fieldsGetterFn) => {
+    const fieldsAccumulator = (
+        listToReduce,
+        fieldsGetterFn,
+        optionalValues
+    ) => {
         return listToReduce.reduce((fields, item) => {
-            return fields.concat(fieldsGetterFn(item));
+            return fields.concat(fieldsGetterFn(item, optionalValues));
         }, []);
     };
 
-    const getFieldsFromLayoutComponent = layoutComponent => {
+    const getFieldsFromLayoutComponent = (layoutComponent, pageLayoutLabel) => {
         let fieldName = layoutComponent.apiName;
         const fieldInfo = objectInfo.fields[layoutComponent.apiName];
 
@@ -329,17 +389,34 @@ export function getFieldsForLayout(layout, objectInfo) {
         }
         if (fieldInfo && !processedFieldNames[fieldName]) {
             processedFieldNames[fieldName] = true;
-            return fieldName;
+            return {
+                fieldName,
+
+                fieldLabel: pageLayoutLabel || layoutComponent.label
+            };
         }
         return [];
     };
-    const getFieldsFromItem = item =>
-        fieldsAccumulator(item.layoutComponents, getFieldsFromLayoutComponent);
-    const getFieldsFromRow = row =>
+    const getFieldsFromItem = (item) => {
+        return fieldsAccumulator(
+            item.layoutComponents,
+            getFieldsFromLayoutComponent,
+            item.label
+        );
+    };
+    const getFieldsFromRow = (row) =>
         fieldsAccumulator(row.layoutItems, getFieldsFromItem);
-    const getFieldsFromSection = section =>
+    const getFieldsFromSection = (section) =>
         fieldsAccumulator(section.layoutRows, getFieldsFromRow);
-    const getFieldsFromSections = sections =>
+    const getFieldsFromSections = (sections) =>
         fieldsAccumulator(sections, getFieldsFromSection);
     return getFieldsFromSections(layout.sections);
+}
+
+export function isPersonNameField(field) {
+    return (
+        field &&
+        (Fields.PERSON_NAME === field.extraTypeInfo ||
+            Fields.SWITCHABLE_PERSON_NAME === field.extraTypeInfo)
+    );
 }

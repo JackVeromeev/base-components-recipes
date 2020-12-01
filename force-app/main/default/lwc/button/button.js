@@ -141,7 +141,7 @@ export default class cButton extends cPrimitiveButton {
             detail: {
                 callbacks: {
                     setOrder: this.setOrder.bind(this),
-                    setDeRegistrationCallback: deRegistrationCallback => {
+                    setDeRegistrationCallback: (deRegistrationCallback) => {
                         this._deRegistrationCallback = deRegistrationCallback;
                     }
                 }
@@ -149,6 +149,12 @@ export default class cButton extends cPrimitiveButton {
         });
 
         this.dispatchEvent(privatebuttonregister);
+    }
+
+    renderedCallback() {
+        super.renderedCallback();
+
+        this.template.host.style.pointerEvents = this.disabled ? 'none' : '';
     }
 
     disconnectedCallback() {

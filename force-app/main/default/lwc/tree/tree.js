@@ -79,34 +79,38 @@ export default class cTree extends LightningElement {
             );
 
             this.syncCurrentFocused();
+
+            if (this._selectedItem === null) {
+                this.setFocusToItem(this._currentFocusedItem, false, false);
+            }
         }
     }
 
     normalizeData(items) {
-        this.treedata = new TreeData();
+        if (items) {
+            this.treedata = new TreeData();
 
-        this._items = items.map(item => {
-            return this.treedata.cloneItems(item);
-        });
+            this._items = items.map((item) => {
+                return this.treedata.cloneItems(item);
+            });
 
-        const treeRoot = this.treedata.parse(this.items, this.selectedItem);
-        this._childNodes = treeRoot ? treeRoot.children : [];
-        this._selectedItem = treeRoot.selectedItem;
-        this._key = this._childNodes.length > 0 ? treeRoot.key : null;
-        if (this._key) {
-            this.syncCurrentFocused();
+            const treeRoot = this.treedata.parse(this.items, this.selectedItem);
+            this._childNodes = treeRoot ? treeRoot.children : [];
+            this._selectedItem = treeRoot.selectedItem;
+            this._key = this._childNodes.length > 0 ? treeRoot.key : null;
+            if (this._key) {
+                this.syncCurrentFocused();
+            }
         }
     }
 
     syncCurrentFocused() {
         if (this._selectedItem) {
             this._currentFocusedItem = this._selectedItem;
-        } else if (
-            !this._currentFocusedItem ||
-            !this.treedata.isValidCurrent(this._currentFocusedItem)
-        ) {
+        } else {
             this._currentFocusedItem = this._defaultFocused;
         }
+
         this.updateCurrentFocusedChild();
     }
 
@@ -257,7 +261,7 @@ export default class cTree extends LightningElement {
         }
     }
 
-    setFocusToItem(item, shouldFocus = true) {
+    setFocusToItem(item, shouldFocus = true, shouldSelect = true) {
         const currentFocused = this.treedata.getItemAtIndex(
             this.treedata.currentFocusedItemIndex
         );
@@ -277,7 +281,8 @@ export default class cTree extends LightningElement {
             if (this.callbackMap[item.parent]) {
                 this.callbackMap[item.parent].focusCallback(
                     item.key,
-                    shouldFocus
+                    shouldFocus,
+                    shouldSelect
                 );
             }
         }

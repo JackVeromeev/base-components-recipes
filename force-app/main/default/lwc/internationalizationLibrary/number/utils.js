@@ -36,6 +36,7 @@ const CURRENCY_DISPLAY = {
 };
 
 const SAFE_NUM_LENGTH = 15;
+const SAFE_NUM_REGEXP = /0+$/;
 
 const numberFormatInstancesCache = {};
 
@@ -83,7 +84,33 @@ function getFractionPart(options) {
 
 function updateFractionPart(skeleton, options) {
     const fractionPart = getFractionPart(options);
-    return fractionPart ? skeleton.replace(/\.(0|#)*/, fractionPart) : skeleton;
+    return addFractionsToPattern(skeleton, fractionPart);
+}
+
+function addFractionsToPattern(pattern, fractionPart) {
+    if (!fractionPart) {
+        return pattern;
+    }
+
+    if (pattern.indexOf(';') > 0) {
+        const [positivePattern, negativePattern] = pattern.split(';');
+        return `${addFractionsToPattern(
+            positivePattern,
+            fractionPart
+        )};${addFractionsToPattern(negativePattern, fractionPart)}`;
+    }
+
+    if (pattern.indexOf('.') > 0) {
+        return pattern.replace(/\.(0|#)*/, fractionPart);
+    }
+
+    const position =
+        Math.max(pattern.lastIndexOf('0'), pattern.lastIndexOf('#')) + 1;
+    return [
+        pattern.slice(0, position),
+        fractionPart,
+        pattern.slice(position)
+    ].join('');
 }
 
 function updateCurrencySymbol(skeleton, currencyCode, options) {
@@ -157,10 +184,14 @@ function getFromCache(options) {
     return numberFormatInstance;
 }
 
-function exceedsSafeLength(value, maxFractionDigits) {
-    const str = value.toString();
-    const intPart = str.split('.')[0];
-    return intPart.length + toNumber(maxFractionDigits, 0) >= SAFE_NUM_LENGTH;
+function exceedsSafeLength(value) {
+    const numberAsString = value.toString();
+    const [intPart, fractionPart] = numberAsString.split('.');
+
+    const digitCount =
+        intPart.length +
+        (fractionPart ? fractionPart.replace(SAFE_NUM_REGEXP, '').length : 0);
+    return digitCount >= SAFE_NUM_LENGTH;
 }
 
 function normalizedMinimumFractionDigits(options) {
